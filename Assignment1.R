@@ -1,0 +1,245 @@
+#Calling the required library
+
+#install.packages("kableExtra")
+#install.packages("ggalt")
+#install.packages("ggplotify")
+library(kableExtra)
+library(tidyverse)
+library(zoo)
+library(ggplot2)
+library(ggthemes)
+library(stats)
+#install.packages("seasonalityPlot")
+library(forecast)
+#install.packages('hrbrthemes')
+library(hrbrthemes)
+#Loading the messy data to R
+
+df=read_csv(file="data/Monthly_Count.csv")
+summary(df)
+
+#The data has multiple columns for different causes of death, which is 
+#the same kind of observation, thus they should instead be placed in a
+#single column according to the rules of tidy data.
+
+df[1:10, 1:5] %>%
+  kbl() %>%
+  kable_paper("hover", full_width = F, fixed_thead = T)
+
+#Tidying the data by pivot longer on the different columns capturing
+#cause of death into a single column called "Cause of Death" with 
+#the values moved to a new column "Cases"
+
+tid_df<-df %>%
+  pivot_longer(c("All Cause", "Natural Cause", "Septicemia",
+                "Malignant Neoplasms", "Diabetes Mellitus", 
+                "Alzheimer Disease", "Influenza and Pneumonia", 
+                "Chronic Lower Respiratory Diseases", 
+                "Other Diseases of Respiratory System", 
+                "Nephritis, Nephrotic Syndrome, and Nephrosis", 
+                "Symptoms, Signs, and Abnormal Clinical and Laboratory Findings, Not Elsewhere Classified", "Diseases of Heart", 
+                "Cerebrovascular Diseases", "Accidents (Unintentional Injuries)",
+                "Motor Vehicle Accidents", "Intentional Self-Harm (Suicide)",
+                "Assault (Homicide)", "Drug Overdose"), 
+               names_to = "Cause_of_Death", values_to = "Cases")
+
+#Now the dataset is following the three main rules of tidy dataset-
+#Each variable must have its own column. - Fixed by pivot_longer
+#Each observation must have its own row. - Fixed by pivot_longer
+#Each value must have its own cell.
+
+tid_df %>%
+  kbl() %>%
+  kable_material_dark()
+
+#Now doing Exploratory Data Analysis, we see there are no missing values,
+#the column Jurisdiction of Occurrence" has only one value, so it can be dropped.
+glimpse(tid_df)
+tid_df<-tid_df[,-1]
+tid_df %>%
+  kbl() %>%
+  kable_material_dark()
+
+#We can also combine the Year and Month columns into a single date
+#using unite as described below.
+
+tid_df2<-tid_df
+tid_df2 %>%
+  unite(Year, Month, Year, sep=" ")
+
+
+#Instead we will use zoo yearmon function to get a date object
+#Removing the Month and Year column, then moving the newly created
+#Date column to the beginning
+
+tid_df$Date <- as.yearmon(paste(tid_df$Year, tid_df$Month), "%Y %m")
+tidy_df <- tid_df %>%
+  select(Date, everything())
+tidy_df<-tidy_df[,-2]
+tidy_df<-tidy_df[,-2]
+class(tidy_df$Date)
+tidy_df %>%
+  kbl() %>%
+  kable_material_dark()
+
+#Adding day to the date
+df$Date <- as.Date( df$Date, '%m/%d/%Y')
+df$Date <- factor(df$Date, levels = c("Jan 2014", "Jan 2015"), ordered = TRUE)
+###############
+
+#Creating a dataframe to arrange date to %Y-%m-%d format and sort by date 
+df3<-tidy_df
+df3$Date <- as.Date(df3$Date)
+df3
+
+df3 %>% arrange(mdy(df3$Date))
+df3<-df3[order(as.Date(df3$Date, format="%Y-%m-%d")),]
+
+#Creating plot with just the data for "All Cause" to see the outlier months with most deaths
+df2<-df3[df3$Cause_of_Death == 'All Cause', ]
+df2$Date <- as.Date(df2$Date)
+pl1<-ggplot(data = df2,
+       mapping = aes(x = factor(Date),
+                     y = Cases)) +
+  geom_point() +
+  geom_smooth() +
+  theme_economist() +
+  scale_colour_economist()+
+  labs(title = "Deaths by Cause",
+       x = "Date",
+       y = "Cases") +
+  theme(axis.text.x=element_blank(),
+      )
+
+pl2<-ggplot(df2, aes(x = Date, y = Cases, color = Cause_of_Death,
+                group = Cause_of_Death)) +
+  geom_line(size = 1) +
+  scale_x_date(date_labels = "%b-%y", date_breaks = "1 month") +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "Date", y = "Number of Cases", color = "Cause of Death") +
+  ggtitle("Number of Cases for All Causes of Death Over Time") +
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.position = "bottom"
+        ) + 
+  theme_economist() +
+  scale_colour_economist()+
+  theme(axis.text.x=element_blank(),)
+
+plot_grid(pl1, pl2, labels = "AUTO")
+
+
+#As we can see from the above plots, the overall trend of the total 
+#number of deaths is increasing over the years, with certain months being 
+#outliers. Like in the above plots, the months of January and December 
+#over the years are the outliers. This proves the conventional wisdom that
+#winter months have the most deaths
+
+#Since the majority of deaths are due to natural causes, we drop the rows
+#for them to see the significant reasons for other causes of deaths
+df_drop<-df3[is.element(df3$Cause_of_Death, c("Septicemia",
+                                              "Malignant Neoplasms", "Diabetes Mellitus", 
+                                              "Alzheimer Disease", "Influenza and Pneumonia", 
+                                              "Chronic Lower Respiratory Diseases", 
+                                              "Other Diseases of Respiratory System", 
+                                              "Nephritis, Nephrotic Syndrome, and Nephrosis", 
+                                              "Symptoms, Signs, and Abnormal Clinical and Laboratory Findings, Not Elsewhere Classified",
+                                              "Diseases of Heart", 
+                                              "Cerebrovascular Diseases", "Accidents (Unintentional Injuries)",
+                                              "Motor Vehicle Accidents", "Intentional Self-Harm (Suicide)",
+                                              "Assault (Homicide)", "Drug Overdose")),]
+
+ggplot(df_drop, aes(x = Date, y = Cases, color = Cause_of_Death, group = Cause_of_Death)) +
+  geom_line(size = 1) +
+  scale_x_date(date_labels = "%b-%y", date_breaks = "1 month") +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "Date", y = "Number of Cases", color = "Cause of Death") +
+  ggtitle("Number of Cases by Cause of Death Over Time") +
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.position = "bottom") +
+  theme(axis.text.x=element_blank(),)
+
+#The initial observation about winter months holds true, thus the data
+#is seasonal in nature. It is interesting to see that the trend is valid
+#for most of the causes of deaths, with the sharpest jumps in diseases of 
+#heart. We also see that deaths due to Diseases of Heart and Malignant 
+#Neoplasm far outweighs other reasons.
+
+
+# Now to find the change in the top contributor to deaths over the years we
+# decide to look at the data on a year level. We group by year finding average
+# and then drop all rows except for 2014 and 2019, to see overall change.
+df_drop2<-df_drop
+df_drop3<-df_drop2 %>%
+  mutate(day = format(Date, "%d"),month = format(Date, "%m"),
+         year = format(Date, "%Y")) %>%
+  group_by(year,Cause_of_Death) %>%
+  summarise(total = sum(Cases))
+
+ggplot(df_drop3, aes(x=Cause_of_Death, y=total, fill=Cause_of_Death)) +
+  geom_bar(stat="identity") +
+  xlab("Cause of Death") +
+  ylab("Number of Deaths") +
+  ggtitle("Number of Deaths by Cause between 2014 to 2019") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# From the above graph we can see that after Diseases of Heart and 
+# Malignant Neoplasms, the top three causes are Accidents, Cerebrovascular, and
+# Respiratory diseases
+
+# Now to find the overall changes in the top causes over the 5 year period
+# We filter the dataset to only include data for 2014 and 2019
+deaths_2014 <- df_drop3[df_drop3$year == 2014,]
+deaths_2019 <- df_drop3[df_drop3$year == 2019,]
+# Sort the data by total number of deaths in descending order
+deaths_2014 <- deaths_2014[order(-deaths_2014$total),]
+deaths_2019 <- deaths_2019[order(-deaths_2019$total),]
+
+
+# Create a bar plot of the top 10 causes of death in 2014 and 2019
+library(ggplot2)
+library(cowplot)
+
+gplot1<-ggplot(data = head(deaths_2014, 10), aes(x = reorder(Cause_of_Death, total), y = total)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  ggtitle("Top 10 Causes of Death in 2014") +
+  xlab("Cause of Death") +
+  ylab("Total Deaths") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+gplot2<-ggplot(data = head(deaths_2019, 10), aes(x = reorder(Cause_of_Death, total), y = total)) +
+  geom_bar(stat = "identity", fill = "red") +
+  ggtitle("Top 10 Causes of Death in 2019") +
+  xlab("Cause of Death") +
+  ylab("Total Deaths") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+plot_grid(gplot1, gplot2, labels = "AUTO")
+
+#Accidents seem to have overtaken the number of deaths due to Respiratory 
+#diseases in 2019. Another observation, the number of deaths due to 
+#Heart disease has markedly increased compared to due to Neoplasms
+# which seems to be close to the 2014 number.
+
+#Now to see overall trends in changes for Cause of death. We group data to year
+deaths_grouped <- aggregate(total ~ Cause_of_Death + year, data = df_drop3, sum)
+
+#Create a line plot of the total deaths for each cause of death over the years 2014-2015
+ggplot(data = deaths_grouped, aes(x = year, y = total, group = Cause_of_Death, color = Cause_of_Death)) +
+  geom_line() +
+  ggtitle("Total Deaths by Cause of Death (2014-2019)") +
+  xlab("Year") +
+  ylab("Total Deaths") +
+  theme_ipsum() + # Arial Narrow
+  scale_fill_ipsum() +
+  theme(legend.position = "top")
+#We see that the observations from the last plot on a moving trend level.
+#The deaths by heart disease are increasing, while melanoma death
+# numbers are stable. Also the deaths due to accidents overtook deaths
+# by respiratory disease in mid 2015
